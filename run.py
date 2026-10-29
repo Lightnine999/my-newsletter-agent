@@ -55,11 +55,12 @@ def main(argv, env):
         return 2
     for line in out["log"]:
         print(line)                             # 이 출력이 Actions 로그에 그대로 남는다
-    if dry:
-        return 0
+    # 실행마다 한 줄 — publish_result가 보냄 / dry-run / 실패로 나뉘어 dry-run도 품질 추적에 쓴다
     row = metrics_row(out, today, started, time.time() - t0, env)
     write_metrics(row)
     print(f"   기록 store/metrics.jsonl · {row['duration_s']}초 · 토큰 {row['tokens']} · ${row['cost_usd']}")
+    if dry:
+        return 0
     # Discord가 거절해도 실행이 '성공'으로 끝나면 알 수가 없다 → 보내야 하는데 '보냄'이 아니면 exit 1 (Actions 빨간불)
     if row["publish_result"] != "보냄":
         print("발행 실패: Discord로 보내지 못했어요. 위의 '⑤ 발행' 줄을 확인하세요.")

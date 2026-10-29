@@ -41,9 +41,9 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
-      - name: 보낸 기록 커밋
-        # 발송이 실패해도 metrics는 남긴다 (실패 기록도 지표). dry-run은 파일을 바꾸지 않는다
-        if: ${{ always() && !inputs.dry_run }}
+      - name: 실행 기록 커밋
+        # 발송이 실패해도, dry-run이어도 metrics는 남긴다 (실패·dry-run 기록도 지표)
+        if: ${{ always() }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

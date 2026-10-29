@@ -72,10 +72,12 @@ def test_보내면_metrics_한_줄을_쌓는다(env, monkeypatch):
     assert {"tokens", "cost_usd", "duration_s", "started_at"} <= set(row)
 
 
-def test_dry_run은_metrics를_쌓지_않는다(env, monkeypatch):
+def test_dry_run도_metrics에_dry_run으로_쌓는다(env, monkeypatch):
+    # PRD 7부: publish_result는 보냄 / dry-run / 실패 — dry-run도 품질 추적에 쓴다
     monkeypatch.setattr(graph, "run", lambda: fake_out("dry-run"))
     assert run.main(["run.py", "--dry-run"], {}) == 0
-    assert not run.METRICS_PATH.exists()
+    row = json.loads(run.METRICS_PATH.read_text(encoding="utf-8"))
+    assert row["publish_result"] == "dry-run" and row["trigger"] == "manual"
 
 
 def test_설정이_틀리면_exit_2(env, monkeypatch):
