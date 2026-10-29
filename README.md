@@ -31,6 +31,7 @@ GitHub Actions(`.github/workflows/daily.yml`)는 07:30 + 예비 07:50·08:10에 
 
 | 문서 | 내용 |
 |---|---|
+| [REPORT.md](REPORT.md) | **수행 결과 보고서** (분야·독자, 소스 채택표, 선별 로직, 구조도, 실행 기록, 회고) |
 | [PRD.md](PRD.md) | 요구사항 (제품 개요 + 1부~7부 + 정리) |
 | [docs/plan.md](docs/plan.md) | 1부~7부 진행 기록과 실측 결과 |
 | [docs/sources.md](docs/sources.md) | 다섯 길 비교, 소스 관문(G1~G3) 측정, 뺀 곳 재점검 |
