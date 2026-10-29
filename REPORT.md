@@ -142,7 +142,7 @@
 ## 4. 파이프라인 구조도
 
 ```mermaid
-flowchart LR
+flowchart TD
     CFG[/"audience.yaml<br/>독자·파트·배분·기준·소스"/] -.-> collect
     SENT[("store/sent.jsonl<br/>이미 보낸 주소")] -.-> collect
 
