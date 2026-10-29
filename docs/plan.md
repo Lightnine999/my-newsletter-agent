@@ -21,7 +21,7 @@
 | 4부 | report | `Send` 팬아웃, 본문 600자 관문, OpenAI 구조화 출력으로 세 칸, 한국어 재시도 | `graph.py` report | 10건 모두 세 칸이 한국어로 채워짐 | ✅ 2026-10-29 (테스트 7개 추가 · 실측 10/10) |
 | 5부 | verify | 별도 호출 원문 대조, 불합격은 결승 다음 후보로 교체 | `graph.py` verify | 일부러 틀린 요약 3개를 넣었을 때 3개 모두 fail | ✅ 2026-10-29 (테스트 7개 추가 · 실측 아래) |
 | 6부 | publish | 배분 한 줄 + 파트별 임베드, 6000자 넘으면 나눠 보내기, heartbeat, md 사본 | `graph.py` publish | 테스트 채널에 실제로 도착, 결과 `보냄` | ✅ 2026-10-29 (테스트 9개 추가 · 새 채널로 첫 발송 `보냄`) |
-| 7부 | 자동 실행 | 독립 저장소, Secrets(`OPENAI_API_KEY`·`DISCORD_WEBHOOK_URL`), Actions 07:30 + 예비 2회, `exit 1`, metrics | `.github/workflows/daily.yml` `store/metrics.jsonl` | 3일 연속 07:30 전후 도착, 하루 일부러 실패시켜 빨간불·메일 확인 | 🔶 코드·워크플로·저장소 완료 (테스트 7개 추가) · Secrets 등록과 Actions 첫 실행 남음 |
+| 7부 | 자동 실행 | 독립 저장소, Secrets(`OPENAI_API_KEY`·`DISCORD_WEBHOOK_URL`), Actions 07:30 + 예비 2회, `exit 1`, metrics | `.github/workflows/daily.yml` `store/metrics.jsonl` | 3일 연속 07:30 전후 도착, 하루 일부러 실패시켜 빨간불·메일 확인 | 🔶 코드·워크플로·저장소·Secrets 완료 · Actions dry-run 성공 · 자동 발송 3일 확인 남음 |
 | 정리 | — | 보고서 | `REPORT.md` | PRD "정리와 확인" 8개 섹션, 일주일 지표 | ⬜ |
 
 ## 준비 단계에서 확인한 것 (다음 단계 입력)
@@ -132,4 +132,6 @@
 - `run.py`: 오늘(KST) 이미 보냈으면(`store/sent.jsonl`에 오늘 날짜) 예비 실행은 그래프를 돌리지 않고 끝나요. 보내야 하는데 `보냄`이 아니면 exit 1, 설정이 틀리면 exit 2. 실제 발송마다 `store/metrics.jsonl`에 한 줄(수집·배분·제외 이유·결과·토큰·추정 비용).
 - `.github/workflows/daily.yml`: KST 07:30 + 예비 07:50·08:10, 손 실행(dry-run 선택). 같은 그룹으로 한 번에 하나만 돌고, 테스트를 먼저 돌린 뒤 발송, 끝나면 `store/`·`issues/`를 저장소에 커밋해요(다음 실행이 중복을 알 수 있게).
 - 로컬 확인: 오늘 이미 보낸 상태에서 `DRY_RUN=0` 실행 → "이미 보냈어요" 건너뜀(exit 0). dry-run은 오늘 보낸 12개 주소를 "이미 보냄"으로 빼고 돌았어요.
-- 남은 것: 저장소 Secrets 두 개 등록 → Actions 손 실행(dry-run)으로 확인 → 다음 날 07:30 자동 발송 확인 → 3일 연속 도착.
+- Secrets: `scripts/set_secrets.sh`로 등록(2026-10-29 21:20). 상대 경로 명령을 다른 폴더에서 실행해 `.env`를 못 찾았는데도 `gh secret set`이 **빈 값을 성공으로 등록**한 일이 여러 번 있어서, 스크립트는 `.env`가 없거나 값이 비면 아무것도 등록하지 않고 멈춰요.
+- Actions dry-run 첫 실행 성공 (2026-10-29 21:20~21:21 KST, 1분 36초): 테스트 57개 통과 → 61건 → 10건(👔 4 · 🏃 5 · 🧴 1, 부족: grooming 1/3) → 검수 10건 → dry-run. GitHub 서버에서도 피드가 막히지 않았고 OpenAI 키가 동작했어요. 웹훅은 실제 발송 때 확인돼요.
+- 남은 것: 2026-10-30 07:30 첫 자동 발송 확인 → 3일 연속 도착 → 하루 일부러 실패시켜 빨간불·메일 확인.
