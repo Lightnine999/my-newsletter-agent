@@ -45,6 +45,7 @@ class Source(BaseModel):
 
 class Config(BaseModel):
     audience: str
+    editor: str                                 # 판단하는 사람 (페르소나)
     window_hours: int = Field(gt=0)
     min_body_chars: int = Field(gt=0)
     allocation: Allocation
@@ -221,8 +222,8 @@ class Ranked(BaseModel):
 class Ranking(BaseModel):
     items: list[Ranked]
 
-def persona(cfg):
-    return f"당신은 40대 남성 아침 뉴스레터의 편집자입니다.\n독자: {cfg.audience}\n"
+def persona(cfg):                               # 판단하는 사람 — audience.yaml의 editor
+    return f"{cfg.editor}\n독자: {cfg.audience}\n"
 
 def listing(batch):
     return "\n".join(f"{i}. [{it['source']} · 피드:{it['part']}] {it['title']}"
@@ -230,14 +231,23 @@ def listing(batch):
                      + (f" | {it['summary'][:120]}" if it.get("summary") else "")
                      for i, it in enumerate(batch))
 
-def ask_assign(batch, cfg):                     # ① 파트 배정 — 피드 파트는 힌트일 뿐 다시 정한다
+def assign_once(batch, cfg):
     parts = "\n".join(f"- {k}: {p.about}" for k, p in cfg.parts.items())
-    system = (persona(cfg) + "기사마다 파트를 하나 고르세요.\n" + parts
+    system = (persona(cfg) + f"아래 {len(batch)}건 전부에 파트를 하나씩 붙이세요. 고르는 단계가 아니라 분류하는 단계라, "
+              f"0번부터 {len(batch) - 1}번까지 빠짐없이 답하세요.\n" + parts
               + "\n- none: 위에 해당하지 않음\nnone으로 보낼 것: " + ", ".join(cfg.exclude)
               + "\n'피드:'는 기사가 들어온 피드의 분류라 틀릴 수 있어요. 내용으로 판단하세요.")
     out = ask(system, listing(batch), Assignments)
-    got = {a.index: a.part for a in out.items if 0 <= a.index < len(batch)}
-    # LLM이 빠뜨린 기사는 피드 파트를 쓰고, 섞인 피드라 모르면 뺀다
+    return {a.index: a.part for a in out.items if 0 <= a.index < len(batch)}
+
+def ask_assign(batch, cfg):                     # ① 파트 배정 — 피드 파트는 힌트일 뿐 다시 정한다
+    got = assign_once(batch, cfg)
+    # 실측: 페르소나를 넣자 40건 중 3건에만 답해서 나머지가 전부 '제외'가 됐다 → 빠진 기사만 한 번 더 묻는다
+    missing = [i for i in range(len(batch)) if i not in got]
+    if missing:
+        again = assign_once([batch[i] for i in missing], cfg)
+        got = {**got, **{missing[j]: p for j, p in again.items()}}
+    # 그래도 빠진 기사는 피드 파트를 쓰고, 섞인 피드라 모르면 뺀다
     return {it["key"]: got.get(i, it["part"] if it["part"] in cfg.parts else "none")
             for i, it in enumerate(batch)}
 

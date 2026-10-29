@@ -129,3 +129,62 @@ def test_select는_none을_빼고_파트별로_순위를_매겨_10건을_고른�
     assert all(p["part"] != "none" for p in out["picked"])
     assert out["log"][0].startswith("② 선별   30 →")
     assert "제외 6" in out["log"][0]
+
+
+# ── 파트별 본선 앞의 예선 (후보가 40건을 넘을 때) ─────────────
+
+def test_파트_후보가_40건_이하면_예선_없이_본선_한_번():
+    calls = []
+    def rank(cands, cfg, part=None):
+        calls.append(len(cands))
+        return [{**c, "event": c["url"]} for c in cands]
+    out = graph.rank_part(items("sports", 31), graph.load_config(), "sports", rank)
+    assert calls == [31] and len(out) == 31
+
+
+def test_파트_후보가_40건을_넘으면_40건씩_예선_묶음마다_8건_뒤_본선():
+    calls = []
+    def rank(cands, cfg, part=None):
+        calls.append(len(cands))
+        return [{**c, "event": c["url"]} for c in reversed(cands)]   # 뒤쪽이 1위
+    cands = items("sports", 95)
+    out = graph.rank_part(cands, graph.load_config(), "sports", rank)
+    assert calls == [40, 40, 15, 24]                   # 예선 3번(40·40·15) → 본선 8+8+8=24건
+    assert len(out) == 24
+    assert cands[94]["url"] in {o["url"] for o in out}  # 마지막 묶음 1위도 본선에 올라간다
+
+
+# ── 판단하는 사람 (페르소나) ────────────────────────────────
+
+def test_편집장_페르소나는_audience_yaml에서_읽어_모든_판단_앞에_붙는다():
+    cfg = graph.load_config()
+    assert "편집장" in cfg.editor and "트렌드팀" in cfg.editor
+    assert graph.persona(cfg).startswith(cfg.editor)
+
+
+# ── 파트 배정이 일부 기사만 답했을 때 ───────────────────────
+
+def test_파트_배정이_빠뜨린_기사만_한_번_더_묻는다(monkeypatch):
+    # 실측: 페르소나를 넣자 LLM이 40건 중 3건에만 답해서 나머지가 전부 '제외'가 됐다
+    batch = [{"key": f"k{i}", "url": f"u{i}", "title": f"t{i}", "source": "S", "part": "mixed"} for i in range(5)]
+    asked = []
+    def fake_ask(system, user, schema):
+        lines = user.splitlines()
+        asked.append(len(lines))
+        if len(asked) == 1:                      # 첫 질문: 5건 중 0번만 답함
+            return graph.Assignments(items=[graph.Assign(index=0, part="sports", reason="r")])
+        return graph.Assignments(items=[graph.Assign(index=i, part="menswear", reason="r") for i in range(len(lines))])
+    monkeypatch.setattr(graph, "ask", fake_ask)
+    got = graph.ask_assign(batch, graph.load_config())
+    assert asked == [5, 4]                       # 빠진 4건만 다시
+    assert got == {"k0": "sports", "k1": "menswear", "k2": "menswear", "k3": "menswear", "k4": "menswear"}
+
+
+def test_파트_배정_지시는_모든_기사에_답하라고_한다(monkeypatch):
+    seen = {}
+    def fake_ask(system, user, schema):
+        seen["system"] = system
+        return graph.Assignments(items=[graph.Assign(index=0, part="sports", reason="r")])
+    monkeypatch.setattr(graph, "ask", fake_ask)
+    graph.ask_assign([{"key": "k0", "url": "u0", "title": "t0", "source": "S", "part": "mixed"}], graph.load_config())
+    assert "빠짐없이" in seen["system"]

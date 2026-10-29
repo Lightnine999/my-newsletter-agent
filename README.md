@@ -12,7 +12,7 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![OpenAI](https://img.shields.io/badge/OpenAI-gpt--4.1--mini-412991?logo=openai&logoColor=white)
 ![Discord](https://img.shields.io/badge/Discord-Webhook-5865F2?logo=discord&logoColor=white)
-![tests](https://img.shields.io/badge/tests-57%20passed-2E7D5B)
+![tests](https://img.shields.io/badge/tests-62%20passed-2E7D5B)
 
 [📊 수행 결과 보고서](REPORT.md) · [📋 요구사항](PRD.md) · [🗂️ 소스 조사](docs/sources.md) · [📰 지난 브리핑](issues/)
 
@@ -73,7 +73,7 @@ flowchart LR
 | 단계 | 하는 일 | 지키는 것 |
 |---|---|---|
 | 📥 **collect** | RSS·Atom 피드 17개(매체 14곳)에서 24시간 글을 모아요 | 이미 보낸 기사는 빼요 · 막힌 사이트는 우회하지 않아요 |
-| 🎯 **select** | LLM이 기사마다 파트를 정하고 순위를 매겨요. 배분은 코드가 해요 | 파트당 기본 3건 · 같은 매체는 하루 3건까지 · 모자라는 파트는 다른 파트가 채워요 |
+| 🎯 **select** | 40대 남성 매거진 **편집장 겸 트렌드팀 총괄** 페르소나가 기사마다 파트를 정하고, 파트 안에서 서로 비교해 순위를 매겨요. 배분은 코드가 해요 | 파트당 기본 3건 · 같은 매체는 하루 3건까지 · 모자라는 파트는 다른 파트가 채워요 |
 | ✍️ **report** | 원문 본문을 뽑아 제목·요약·40대에게 왜, 세 칸으로 써요 | 본문이 600자 미만이면 빼요 · 영어로 나오면 한 번 다시 써요 |
 | 🔍 **verify** | 요약을 쓴 호출과 **다른** LLM 호출이 원문과 대조해요 | 없는 제품·바뀐 숫자는 탈락 → 예비 후보로 교체해요 |
 | 📨 **publish** | 오늘 배분 한 줄 + 파트별 카드로 보내요 | 0건인 날도 "오늘은 조용합니다"를 보내 멈춤과 구분해요 |
@@ -90,7 +90,7 @@ flowchart LR
 | 실행 시간 | 약 1분 (GitHub Actions) |
 | 하루 비용 | 약 **$0.03** (토큰 약 5만 개, gpt-4.1-mini) |
 | 검수 시험 | 실제 요약 10/10 통과 · 일부러 틀린 요약 3/3 탈락 |
-| 테스트 | **57개** · 실제 API·네트워크 없이 0.2초 |
+| 테스트 | **62개** · 실제 API·네트워크 없이 0.2초 |
 
 ## 매일 아침 자동으로
 
@@ -129,7 +129,7 @@ my-newsletter-agent/
 ├── issues/               # 보낸 브리핑 사본 (날짜.md)
 ├── REPORT.md             # 수행 결과 보고서
 ├── PRD.md · docs/        # 요구사항 · 진행 기록 · 소스 조사
-├── tests/                # 테스트 57개
+├── tests/                # 테스트 62개
 └── .github/workflows/daily.yml
 ```
 
