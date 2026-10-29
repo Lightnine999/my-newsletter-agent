@@ -1,0 +1,11 @@
+.venv/
+__pycache__/
+.pytest_cache/
+.env
+.omc/
+.DS_Store
+output/
+
+# 원본 자료는 로컬에만 둔다 (교재 저작권 · docx 내용은 PRD·docs에 옮겨 둠)
+D00_*.html
+sources-master.docx

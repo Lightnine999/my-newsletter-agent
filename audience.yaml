@@ -1,0 +1,78 @@
+# 누구에게 무엇을 고를지 — 코드를 고치지 않고 여기만 바꿔요 (PRD 0장·3부)
+audience: >-
+  출퇴근과 주말을 함께 챙기는 40대 남성. 정장보다 스마트 캐주얼을 입고,
+  체지방·관절·회복을 신경 쓰며, 야외 운동 전후 피부 관리와 안티에이징에 관심이 있다.
+
+window_hours: 24          # 수집 범위
+min_body_chars: 600       # G1 본문 관문 · report도 같은 기준
+
+# 하루 10건 배분 규칙
+allocation:
+  total: 10               # 하루 발행 건수
+  base_per_part: 3        # 파트마다 기본 몫
+  max_per_part: 5         # 결승으로 받아도 이 이상은 안 감
+  max_per_source_in_part: 2
+  max_per_source_total: 3
+  bonus: best             # best = 남은 자리를 결승으로 / 파트 이름(sports 등) = 항상 그 파트
+
+parts:
+  menswear:
+    title: 남성복
+    emoji: "👔"
+    about: 출근·주말 겸용 스마트 캐주얼, 소재·컬러·신발 조합, 테일러링을 캐주얼하게 입는 법
+    keywords: [Smart Casual, Business Casual, Blazer, Chinos, Knitwear, Loafers, 세미정장, 비즈니스 캐주얼, 출근룩, 40대 남성 코디]
+  sports:
+    title: 스포츠
+    emoji: "🏃"
+    about: 러닝·수영·필라테스·요가·근력, 골프·테니스, 등산·캠핑, 하이록스·피클볼. 체지방 관리, 관절 보호, 부상 방지, 장비
+    keywords: [Running, Swim Workout, Golf, Tennis, Pilates, Yoga, Mobility, Hiking, Camping, Ultralight Gear, Weight Loss, Longevity, Zone 2, HYROX, Pickleball, 러닝화, 수영 루틴, 등산화, 캠핑 기어, 체지방 감량, 코어 운동]
+  grooming:
+    title: 화장품
+    emoji: "🧴"
+    about: 안티에이징 성분, 자외선·운동 후 진정, 쉐이빙, 두피, 향수
+    keywords: [Anti-aging, Retinol, Peptide, SPF, Sunscreen, Aftershave, Hair Loss, Scalp Care, Niche Fragrance, 안티에이징, 선스틱, 애프터 스포츠 케어, 탈모 샴푸, 톤업 로션, 니치 향수]
+
+criteria:
+  - 오늘 옷차림·운동·관리에 바로 쓸 수 있나
+  - 40대 몸(대사량·관절·회복·피부 탄력)에 맞나
+  - 새 제품·성분·연구처럼 실제로 바뀐 게 있나
+  # 2026-10-29 실측: '28일 만에 식스팩' 같은 제목이 스포츠 1~2위에 올라 아래 두 줄을 더했다
+  - 단기간 몸 만들기·과장된 제목보다 오래 이어 갈 수 있는 습관·부상 예방·회복을 높게
+  - 제품만 늘어놓은 쇼핑 목록보다 고르는 기준이나 쓰는 법을 알려 주는 글을 높게
+
+exclude:
+  - 연예인 화보·애장품
+  - 프로 경기 결과·이적·리그 소식
+  - 데이팅·선물 리스트·세일 딜
+  - 여성 전용 제품
+  - 1020 스트리트 트렌드
+  - 부동산·자동차 경매
+  - 사고·재난 뉴스
+  - 기업 수상·홍보 보도자료
+
+style:
+  headline: 25자 내외, 과장 없이
+  summary: 두세 문장 ~합니다체, 제품명·가격·수치는 원문에 있는 것만
+  why: 40대에게 왜 쓸모 있나 한 문장
+  language: 한국어만
+
+# 관문(G1~G3) 측정 결과는 docs/sources.md
+# part: menswear / sports / grooming / mixed(select가 정함)
+sources:
+  - {name: Permanent Style,      url: "https://www.permanentstyle.com/feed",                    part: menswear}
+  - {name: 에스콰이어 코리아,     url: "https://www.esquirekorea.co.kr/rss",                     part: mixed}
+  - {name: FashionBeans,         url: "https://www.fashionbeans.com/feed/",                     part: mixed}
+  - {name: GQ 코리아,             url: "https://www.gqkorea.co.kr/feed/",                        part: mixed}
+  - {name: GQ 코리아,             url: "https://www.gqkorea.co.kr/category/style/feed/",         part: menswear}
+  - {name: GQ 코리아,             url: "https://www.gqkorea.co.kr/category/fitness/feed/",       part: sports}
+  - {name: GQ 코리아,             url: "https://www.gqkorea.co.kr/category/grooming/feed/",      part: grooming}
+  - {name: Runner's World,       url: "https://www.runnersworld.com/rss/all.xml/",              part: sports}
+  - {name: Men's Health,         url: "https://www.menshealth.com/rss/fitness.xml/",            part: sports}
+  - {name: Men's Health AU,      url: "https://menshealth.com.au/category/fitness/feed/",       part: sports}
+  - {name: Outside Online,       url: "https://www.outsideonline.com/feed/",                    part: sports}
+  - {name: SwimSwam,             url: "https://swimswam.com/training/feed/",                    part: sports}
+  - {name: Backpacker,           url: "https://www.backpacker.com/feed/",                       part: sports}
+  - {name: 골프매거진코리아,       url: "https://golfmagazinekorea.com/rss",                      part: sports}
+  - {name: Men's Health,         url: "https://www.menshealth.com/rss/grooming.xml/",           part: grooming}
+  - {name: Robb Report,          url: "https://robbreport.com/style/grooming/feed/",            part: grooming}
+  - {name: 아모레퍼시픽 스토리,   url: "https://stories.amorepacific.com/feed/",                 part: grooming}
