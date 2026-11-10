@@ -23,7 +23,8 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 HITL_DIR = Path(__file__).resolve().parent / "store" / "hitl"
 SAMPLES, DECISIONS = HITL_DIR / "samples.jsonl", HITL_DIR / "decisions.jsonl"
 ACTIONS = {"approve": "✅ 승인 — 그대로 발송", "approve_without": "➖ 걸린 기사 빼고 발송",
-           "edit": "✏️ 문구 수정 후 발송", "hold": "⏸️ 발송 보류"}
+           "edit": "✏️ 문구 수정 후 발송", "hold": "⏸️ 발송 보류", "per_article": "🧩 기사별로 정하기"}
+PER = {"승인": None, "보류": "exclude", "교체": "replace"}  # 기사별 응답 — 교체는 예비 기사로 바꿔 넣기
 DEFAULT_RULE = "①+②"                           # 확정한 두 기준 (docs/hitl-plan.md)
 
 
@@ -106,10 +107,18 @@ def response_form(date, rule, articles, review, submit_fn=None):
     # 기본 선택을 두지 않는다 — 기준을 바꾸는 등 화면이 다시 그려질 때 선택이 '승인'으로 돌아가 실수로 승인한 적이 있다
     action = st.radio("어떻게 할까요?", list(ACTIONS), format_func=ACTIONS.get, key=f"act-{date}", index=None)
     flagged = review["flagged"]
-    exclude, edits, reason = [], {}, ""
+    exclude, edits, reason, replace = [], {}, "", []
     if action == "approve_without":
         exclude = st.multiselect("뺄 기사", [a["url"] for a in flagged], default=[a["url"] for a in flagged],
                                  format_func=lambda u: next(a["headline"] for a in flagged if a["url"] == u))
+    if action == "per_article":
+        for i, a in enumerate(flagged, 1):
+            pick = st.radio(f"{i}. {a['headline']}", list(PER), horizontal=True, key=f"p-{date}-{a['url']}")
+            if PER[pick] == "exclude":
+                exclude.append(a["url"])
+            elif PER[pick] == "replace":
+                replace.append(a["url"])
+        st.caption("교체는 예비 기사를 새로 요약·검수해 그 자리에 넣어요. 그 기사도 기준에 걸리면 빼고 보내요.")
     if action == "edit":
         for a in flagged:
             h = st.text_input("제목", a["headline"], key=f"h-{a['url']}")
@@ -119,12 +128,12 @@ def response_form(date, rule, articles, review, submit_fn=None):
     reason = st.text_area("사유" + (" (필수)" if action == "hold" else " (선택)"), key=f"r-{date}",
                           placeholder="예: 콜레스테롤 수치를 원문에서 다시 확인해야 함")
     if st.button("응답 보내기", type="primary", key=f"go-{date}", disabled=action is None):
-        (submit_fn or submit)(date, rule, articles, action, exclude, edits, reason)
+        (submit_fn or submit)(date, rule, articles, action, exclude, edits, reason, replace)
 
 
-def submit(date, rule, articles, action, exclude, edits, reason):
+def submit(date, rule, articles, action, exclude, edits, reason, replace=()):
     try:
-        d = hitl.Decision(action=action, exclude=exclude, edits=edits, reason=reason)
+        d = hitl.Decision(action=action, exclude=exclude, edits=edits, reason=reason, replace=list(replace))
     except ValidationError as e:
         st.warning(e.errors()[0]["msg"].removeprefix("Value error, "))
         return
@@ -167,9 +176,9 @@ def load_waiting():                             # 날짜 → (기록, 승인 화
 
 
 def reply_to_discord(row, review):              # Streamlit 응답 → 디스코드 스레드 답글 (응답 창구는 스레드 하나)
-    def submit_fn(date, rule, articles, action, exclude, edits, reason):
+    def submit_fn(date, rule, articles, action, exclude, edits, reason, replace=()):
         try:
-            d = hitl.Decision(action=action, exclude=exclude, edits=edits, reason=reason)
+            d = hitl.Decision(action=action, exclude=exclude, edits=edits, reason=reason, replace=list(replace))
         except ValidationError as e:
             st.warning(e.errors()[0]["msg"].removeprefix("Value error, "))
             return

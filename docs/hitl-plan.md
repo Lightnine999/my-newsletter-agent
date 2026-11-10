@@ -73,6 +73,7 @@ collect → select → report(팬아웃) → verify → [approve] → publish
                      → 체크포인트를 암호화해 store/checkpoints.enc 로 커밋, store/reviews.jsonl 에 대기 표시
 [사람]  카드에 ✅ 승인 · ➖ 걸린 기사 빼고 · ⏸️ 보류 반응, 또는 스레드 답글
         (`승인` · `빼고 1,2` · `보류: 사유` · `수정 1: 새 요약` · `제목 1: 새 제목`)
+        기사별 (2026-11-11 추가): 줄마다 `1 - 승인` · `2 - 보류` · `3,4 - 교체` — 걸린 번호를 모두 적어야 인정, 교체는 예비 기사를 새로 취재·검수
         Streamlit 화면에서 응답하면 같은 형식의 답글을 스레드에 대신 단다
 [review.yml 08:00~12:30, 30분마다]  run.py --check
         → 내 사용자 ID의 응답만 읽어 Decision → Command(resume=Decision) → publish

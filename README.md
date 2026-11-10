@@ -12,9 +12,9 @@
 ![LangGraph](https://img.shields.io/badge/LangGraph-1.2-1C3C3C)
 ![OpenAI](https://img.shields.io/badge/OpenAI-gpt--4.1--mini-412991?logo=openai&logoColor=white)
 ![Discord](https://img.shields.io/badge/Discord-Webhook-5865F2?logo=discord&logoColor=white)
-![tests](https://img.shields.io/badge/tests-62%20passed-2E7D5B)
+![tests](https://img.shields.io/badge/tests-122%20passed-2E7D5B)
 
-[📊 수행 결과 보고서](REPORT.md) · [📋 요구사항](PRD.md) · [🗂️ 소스 조사](docs/sources.md) · [📰 지난 브리핑](issues/)
+[🙋 HITL 보고서](REPORT.md) · [📊 1차 보고서](REPORT-briefing.md) · [📋 요구사항](PRD.md) · [🗂️ 소스 조사](docs/sources.md) · [📰 지난 브리핑](issues/)
 
 </div>
 
@@ -102,6 +102,35 @@ flowchart LR
 
 못 보내면 Actions가 빨간불이 되고 실패 메일이 와요. 매 실행 기록은 [store/metrics.jsonl](store/metrics.jsonl)에 한 줄씩 쌓여요.
 
+## 🙋 발송 전 사람 승인 (HITL)
+
+> 브랜치 `feat/hitl-discord-approval` · 자세한 내용은 [REPORT.md](REPORT.md)
+
+검수를 통과했어도 **원문에 없는 숫자**가 있거나 **건강·의학 조언**(처방·피부과·통증 등)이 들어간 기사가 있으면, 그날 호는 발송 직전(`approve` 노드)에 멈춰요. 걸린 기사가 없으면 지금처럼 바로 나가요.
+
+```
+07:30  daily.yml   기사 생성 → 기준 ①+② 검사 ─ 걸린 것 없음 → 구독 채널 발송
+                                             └ 걸림 → interrupt · 비공개 #검토 채널에 승인 요청 카드
+08:00~13:30 30분마다  review.yml (run.py --check) → 담당자 응답을 읽어 이어서 발송
+12:00 이후 첫 확인  응답이 없으면 걸린 기사만 빼고 발송
+```
+
+**응답하는 법** (담당자로 등록한 디스코드 계정의 응답만 인정해요)
+
+| 응답 | 카드 반응 | 스레드 답글 |
+|---|---|---|
+| 그대로 발송 | ✅ | `승인` |
+| 걸린 기사 빼고 발송 | ➖ | `빼고` · `빼고 1,2` |
+| **기사별로 정하기** | — | 줄마다 `1 - 승인` · `2 - 보류` · `3,4 - 교체` (걸린 번호를 모두) |
+| 문구 고쳐서 발송 | — | `제목 1: 새 제목` · `수정 1: 새 요약` |
+| 호 전체 보내지 않기 | ⏸️ | `보류: 사유` |
+
+`교체`는 예비 기사를 새로 요약·검수해 그 자리에 넣어요(그 기사도 기준에 걸리면 빼요). 반응을 여러 개 누르거나, 걸린 번호가 빠졌거나, 형식에 안 맞는 답글은 승인으로 치지 않고 스레드에서 한 번 되물어요. 응답은 다음 확인 실행(최대 30분) 때 반영돼요.
+
+**Streamlit 승인 화면** — 대기 목록 · 멈춘 이유 · 원문 근거 · 승인하면 일어나는 일을 보고, 응답하면 디스코드 스레드에 같은 답글을 대신 달아요.
+
+<img src="docs/images/hitl-approval-top.png" alt="Streamlit 승인 화면" width="80%">
+
 ## 직접 돌려 보기
 
 ```bash
@@ -113,29 +142,60 @@ cp .env.example .env                 # OPENAI_API_KEY, DISCORD_WEBHOOK_URL 채�
 DRY_RUN=0 .venv/bin/python run.py    # 실제로 Discord에 보내기
 ```
 
+**사람 승인까지 시연하기** (로컬 실행이면 충분해요 · 구독 채널로는 안 나가요)
+
+```bash
+.venv/bin/python run.py --dry-run    # 1) 걸린 기사가 있으면 멈추고 #검토 채널에 카드가 올라와요
+.venv/bin/streamlit run app.py       # 2) http://localhost:8501 → 사이드바 '실제 승인 대기'
+.venv/bin/python run.py --check      # 3) 디스코드에 응답한 뒤 실행 → 응답대로 output/날짜.md 발행, 카드 '처리됨'
+```
+
+- 디스코드 봇이 없어도 1)·2)는 돌아가요. 이때는 카드가 올라가지 않고, 승인 화면의 **'샘플 (기준 시험)'** 보기로 기준을 바꿔 가며 볼 수 있어요(`scripts/hitl_samples.py`로 샘플 수집).
+- 기준 비교표(개입률·놓침·헛멈춤): `.venv/bin/python scripts/hitl_compare.py`
+
+**디스코드 승인을 켜려면** `.env`(로컬)와 저장소 Secrets(Actions)에 네 값을 더 넣어요. 값은 저장소에 올리지 않아요.
+
+| 이름 | 무엇 | 어디서 |
+|---|---|---|
+| `DISCORD_BOT_TOKEN` | 봇 토큰 | Developer Portal → Bot → Reset Token (**Message Content Intent 켜기**) |
+| `DISCORD_REVIEW_CHANNEL_ID` | **비공개** 검토 채널 ID (구독 채널과 다른 채널) | 개발자 모드 → 채널 우클릭 → ID 복사 |
+| `DISCORD_REVIEWER_ID` | 승인할 사람의 디스코드 사용자 ID | 개발자 모드 → 내 이름 우클릭 → ID 복사 |
+| `HITL_STATE_KEY` | 멈춘 지점 암호화 키 | `.venv/bin/python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"` |
+
+봇은 서버에 초대만 하면 돼요(권한: 채널 보기 · 메시지 보내기 · 스레드에서 메시지 보내기 · 공개 스레드 만들기 · 메시지 기록 보기 · 반응 추가). **켜 둘 필요가 없어요** — 실행될 때만 REST로 카드를 올리고 응답을 읽어요.
+
 내 저장소에서 매일 받으려면 저장소 Settings → Secrets에 `OPENAI_API_KEY`·`DISCORD_WEBHOOK_URL` 두 개를 넣으면 돼요. `.env`가 있다면 `bash scripts/set_secrets.sh` 한 줄로 등록돼요.
 
 ## 폴더 구조
 
 ```
 my-newsletter-agent/
-├── graph.py              # LangGraph State · 노드 다섯 개 · build() · run()
-├── run.py                # 실행 진입점 (중복 발송 방지 · 실패 시 exit 1 · metrics 기록)
+├── graph.py              # LangGraph State · 노드 여섯 개(approve 포함) · run() · resume() · pending()
+├── run.py                # 실행 진입점 (중복 발송 방지 · 승인 대기 · --check 이어 가기 · metrics)
+├── hitl.py               # 멈춤 기준 ①② · Decision · 답글 문법 · 반응 · 정오 규칙
+├── hitl_store.py         # 체크포인트 암호화 저장·복원 · 승인 대기 기록
+├── discord_review.py     # 디스코드 봇 REST (카드 · 반응 · 스레드 · 응답 읽기)
+├── app.py                # Streamlit 승인 화면
 ├── audience.yaml         # 독자 · 파트 · 10건 배분 · 기준 · 제외 조건 · 소스 17개
 ├── requirements.txt      # 의존성
 ├── store/
 │   ├── metrics.jsonl     # 실행마다 한 줄: 수집·배분·제외 이유·결과·토큰·비용
-│   └── sent.jsonl        # 보낸 기사 주소 (다음 날 중복 제외)
+│   ├── sent.jsonl        # 보낸 기사 주소 (다음 날 중복 제외)
+│   ├── reviews.jsonl     # 승인 대기 기록 (날짜 · 상태 · 카드 번호, 본문 없음)
+│   └── checkpoints.enc   # 멈춘 지점 (암호화 — 원문이 보이지 않아요)
 ├── issues/               # 보낸 브리핑 사본 (날짜.md)
-├── REPORT.md             # 수행 결과 보고서
+├── REPORT.md             # HITL 보고서 (REPORT-briefing.md = 1차 보고서)
 ├── PRD.md · docs/        # 요구사항 · 진행 기록 · 소스 조사
-├── tests/                # 테스트 62개
-└── .github/workflows/daily.yml
+├── scripts/              # HITL 샘플 수집 · 기준 비교표
+├── tests/                # 테스트 122개
+└── .github/workflows/    # daily.yml (07:30) · review.yml (승인 확인 30분마다)
 ```
 
 ## 더 읽을거리
 
-- **[REPORT.md](REPORT.md)** — 분야·독자 정의, 소스 채택표(측정값), 선별 로직, 구조도, 실행 기록, 회고
+- **[REPORT.md](REPORT.md)** — HITL: 주제, 멈춤·재개 구조도, 승인 기준, 실행 결과, 승인 화면 설계, 회고
+- [REPORT-briefing.md](REPORT-briefing.md) — 1차: 분야·독자 정의, 소스 채택표(측정값), 선별 로직, 구조도, 실행 기록, 회고
+- [docs/hitl-plan.md](docs/hitl-plan.md) — HITL 설계와 결정 기록
 - [docs/sources.md](docs/sources.md) — 자료를 가져오는 다섯 길 비교와 소스 관문 측정
 - [docs/plan.md](docs/plan.md) — 1부~7부를 만들며 실측하고 고친 기록
 - [ai-newsletter-agent](https://github.com/Lightnine999/ai-newsletter-agent) — 같은 구조로 먼저 만든 AI 소식 브리핑

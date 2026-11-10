@@ -112,3 +112,16 @@ def test_거절되면_토큰_없이_오류를_낸다():
     with pytest.raises(dr.DiscordError) as e:
         dr.reply(CFG, "555", "안녕", http=http)
     assert "403" in str(e.value) and "tok" not in str(e.value)
+
+
+def test_기사별_답글을_읽고_틀리면_구체적으로_되묻는다():
+    ok = FakeHTTP({("GET", "/channels/555/messages"): Resp(200, [msg("901", "7", "1 - 교체")])})
+    got = dr.read_response(CFG, "555", FLAGGED, seen="0", http=ok)
+    assert (got.decision.action, got.decision.replace) == ("per_article", ["a"])
+    bad = FakeHTTP({("GET", "/channels/555/messages"): Resp(200, [msg("902", "7", "2 - 승인")])})
+    got = dr.read_response(CFG, "555", FLAGGED, seen="0", http=bad)
+    assert got.decision is None and "2번 기사는 없어요" in got.problem
+
+
+def test_카드_안내에_기사별_답글_형식이_있다():
+    assert "1 - 승인" in dr.card(REVIEW, CFG, dry_run=False)["content"]

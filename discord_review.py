@@ -11,7 +11,8 @@ import hitl
 
 API = "https://discord.com/api/v10"
 GRAMMAR = ("반응: ✅ 승인 · ➖ 걸린 기사 빼고 발송 · ⏸️ 보류\n"
-           "스레드 답글: `승인` · `빼고 1,2` · `보류: 사유` · `수정 1: 새 요약` · `제목 1: 새 제목`")
+           "기사별 답글 (걸린 번호를 모두, 줄마다): `1 - 승인` · `2 - 보류` · `3,4 - 교체` (교체 = 예비 기사로 바꿔 넣기)\n"
+           "호 전체 답글: `승인` · `빼고 1,2` · `보류: 사유` · `수정 1: 새 요약` · `제목 1: 새 제목`")
 
 
 class DiscordError(Exception):
@@ -109,10 +110,10 @@ def read_response(cfg, mid, flagged, seen="0", http=None):
     mine = sorted((m for m in msgs if m["author"]["id"] == cfg.reviewer_id), key=lambda m: int(m["id"]))
     if mine:
         last, new_seen = mine[-1], str(max(int(seen), int(mine[-1]["id"])))
-        d = hitl.parse_reply(last["content"], flagged)
+        d, why = hitl.parse_reply_detail(last["content"], flagged)
         if d:
             return Response(d, new_seen)
-        ask = None if int(last["id"]) <= int(seen) else f"이해하지 못했어요. 이렇게 답해 주세요.\n{GRAMMAR}"
+        ask = None if int(last["id"]) <= int(seen) else f"{why or '이해하지 못했어요.'} 이렇게 답해 주세요.\n{GRAMMAR}"
         return Response(None, new_seen, ask)
     # 2) 답글이 없으면 카드에 담당자가 누른 반응
     chosen = _reviewer_reactions(cfg, mid, http)

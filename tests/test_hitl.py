@@ -122,3 +122,35 @@ def test_정오가_지나면_걸린_기사만_빼고_보낸다():
     assert hitl.past_deadline("2026-11-10", datetime(2026, 11, 11, 8, 0, tzinfo=kst))
     d = hitl.timeout_decision(FLAGGED)
     assert (d.action, d.exclude) == ("approve_without", ["a", "b"]) and d.reason
+
+
+# ── 기사별 답글: '번호 - 승인 / 보류 / 교체' (2026-11-11 사용자 요청) ──
+def test_기사별로_승인_보류_교체를_읽는다():
+    d = hitl.parse_reply("1 - 승인\n2 - 교체", FLAGGED)
+    assert (d.action, d.exclude, d.replace) == ("per_article", [], ["b"])
+    d = hitl.parse_reply("1,2 - 보류", FLAGGED)
+    assert (d.action, d.exclude, d.replace) == ("per_article", ["a", "b"], [])
+    assert hitl.parse_reply("1-승인\n2 – 보류", FLAGGED).exclude == ["b"]          # 띄어쓰기·대시 모양이 달라도
+
+def test_걸린_기사_번호가_빠지면_응답으로_치지_않고_빠진_번호를_묻는다():
+    d, problem = hitl.parse_reply_detail("1 - 승인", FLAGGED)
+    assert d is None and "2번" in problem
+
+def test_같은_번호에_다른_답이면_되묻는다():
+    d, problem = hitl.parse_reply_detail("1 - 승인\n1 - 보류\n2 - 승인", FLAGGED)
+    assert d is None and "1번" in problem
+
+def test_없는_번호는_되묻는다():
+    d, problem = hitl.parse_reply_detail("1 - 승인\n2 - 승인\n3 - 보류", FLAGGED)
+    assert d is None and "3번" in problem
+
+def test_기사별_응답도_답글로_바꾸면_같은_응답으로_읽힌다():
+    d = hitl.Decision(action="per_article", exclude=["a"], replace=["b"])
+    assert hitl.parse_reply(hitl.reply_text(d, FLAGGED), FLAGGED) == d
+
+def test_기사별_응답은_보류와_교체를_빼고_나머지를_보낸다():
+    arts = [art("a"), art("b"), art("c")]
+    sent = hitl.apply_decision(arts, hitl.Decision(action="per_article", exclude=["a"], replace=["b"]))
+    assert [a["url"] for a in sent] == ["c"]                                       # 교체 자리는 graph가 채운다
+    with pytest.raises(ValidationError):
+        hitl.Decision(action="per_article", exclude=["a"], replace=["a"])           # 한 기사에 두 가지 답

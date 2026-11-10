@@ -604,7 +604,19 @@ def approve(s: dict, cfg: Config) -> dict:      # ④½ 발송 전 사람 승인
     sent = hitl.apply_decision(s["verified"], d)
     if d.action == "hold":
         return {"verified": [], "held": d.reason, "log": [f"   승인 응답 · 보류 · 걸린 기사 {len(review['flagged'])}건"]}
-    return {"verified": sent, "log": [f"   승인 응답 · {d.action} · {len(sent)}건 발송"]}
+    extra, log = fill_replacements(s, sent, d.replace, cfg) if d.replace else ([], [])
+    return {"verified": sent + extra, "log": log + [f"   승인 응답 · {d.action} · {len(sent) + len(extra)}건 발송"]}
+
+def fill_replacements(s, kept, replaced, cfg):  # '교체'한 자리를 예비 기사로 채운다 — 새로 취재·검수하고, 기준에 또 걸리면 뺀다
+    used = {a["url"] for a in s["verified"]}    # 이미 실렸거나 방금 뺀 기사는 다시 쓰지 않는다
+    spares = [c for c in s.get("spares", []) if c["url"] not in used]
+    new, log = replace(spares, kept, len(replaced), cfg)
+    stop = hitl.CRITERIA[STOP_RULE]
+    ok = [a for a in new if not stop(a)]
+    log += [f"   교체 기사도 기준에 걸려 뺐어요 · {a['headline'][:30]}" for a in new if stop(a)]
+    if len(ok) < len(replaced):
+        log.append(f"   교체 {len(replaced)}자리 중 {len(ok)}자리만 채웠어요")
+    return ok, log
 
 def build(cfg: Config):                         # 노드를 이름으로 붙인다
     g = StateGraph(Brief)

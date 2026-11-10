@@ -84,8 +84,9 @@ class Edit(BaseModel):
     summary: str = Field(min_length=1)
 
 class Decision(BaseModel):                      # 나중에 Command(resume=Decision)로 그래프에 넣는다
-    action: Literal["approve", "approve_without", "edit", "hold"]
-    exclude: list[str] = []                     # 빼고 보낼 기사 url
+    action: Literal["approve", "approve_without", "edit", "hold", "per_article"]
+    exclude: list[str] = []                     # 빼고 보낼 기사 url (per_article에서는 '보류'한 기사)
+    replace: list[str] = []                     # per_article: 예비 기사로 바꿔 넣을 기사 url (graph의 approve가 채운다)
     edits: dict[str, Edit] = {}                 # url → 고친 제목·요약
     reason: str = ""
 
@@ -97,12 +98,14 @@ class Decision(BaseModel):                      # 나중에 Command(resume=Decis
             raise ValueError("고친 기사가 없어요")
         if self.action == "hold" and not self.reason.strip():
             raise ValueError("보류 사유를 적어 주세요 — 나중에 기준을 고칠 재료가 돼요")
+        if set(self.exclude) & set(self.replace):
+            raise ValueError("한 기사에 보류와 교체를 함께 고를 수 없어요")
         return self
 
 def apply_decision(articles, d: Decision):      # 응답대로 실제로 보낼 기사 목록을 만든다. 보류면 빈 목록
     if d.action == "hold":
         return []
-    kept = [a for a in articles if a["url"] not in set(d.exclude)]
+    kept = [a for a in articles if a["url"] not in set(d.exclude) | set(d.replace)]   # 교체 자리는 graph가 채운다
     return [{**a, **d.edits[a["url"]].model_dump()} if a["url"] in d.edits else a for a in kept]
 
 # ── 디스코드 응답 (docs/hitl-plan.md "구현 설계") ───────────────────
@@ -112,7 +115,8 @@ from zoneinfo import ZoneInfo
 
 KST = ZoneInfo("Asia/Seoul")
 DEADLINE = dtime(12, 0)                          # 이 시각이 지나도 응답이 없으면 timeout_decision
-ACTION_LABEL = {"approve": "승인", "approve_without": "걸린 기사 빼고 발송", "edit": "문구 수정 후 발송", "hold": "보류"}
+ACTION_LABEL = {"approve": "승인", "approve_without": "걸린 기사 빼고 발송", "edit": "문구 수정 후 발송", "hold": "보류",
+                "per_article": "기사별 처리"}
 REACTIONS = {"✅": "approve", "➖": "approve_without", "⏸️": "hold"}
 HOLD_DEFAULT = "디스코드에서 보류 (사유 없음)"
 EDIT_LINE = re.compile(r"^(수정|제목)\s*(\d+)\s*[:：]\s*(.+)$")
@@ -137,8 +141,39 @@ def _parse_edits(lines, flagged):
         edits[a["url"]] = {**cur, ("summary" if m.group(1) == "수정" else "headline"): m.group(3).strip()}
     return edits
 
+# 기사별 답글 (2026-11-11 사용자 요청): '1 - 승인' · '2 - 보류' · '3,4 - 교체'를 줄마다. 걸린 기사 번호를 빠짐없이 적어야 한다
+PER_LINE = re.compile(r"^([\d\s,]+?)\s*[-–—]\s*(승인|보류|교체)$")
+PER_ACTION = {"승인": "approve", "보류": "exclude", "교체": "replace"}
+
+def _parse_per_article(lines, flagged):         # → (Decision|None, 되물을 말|None)
+    picked = {}
+    for line in lines:
+        m = PER_LINE.match(line)
+        if not m:
+            return None, f"'{line}'를 이해하지 못했어요. 줄마다 `번호 - 승인`·`번호 - 보류`·`번호 - 교체`로 써 주세요."
+        for n in (int(x) for x in re.findall(r"\d+", m.group(1))):
+            if not 1 <= n <= len(flagged):
+                return None, f"{n}번 기사는 없어요. 걸린 기사는 1~{len(flagged)}번이에요."
+            if picked.get(n, m.group(2)) != m.group(2):
+                return None, f"{n}번에 답이 두 개예요({picked[n]}·{m.group(2)}). 하나만 남겨 주세요."
+            picked[n] = m.group(2)
+    missing = [str(n) for n in range(1, len(flagged) + 1) if n not in picked]
+    if missing:
+        return None, f"{', '.join(missing)}번은 어떻게 할까요? 걸린 기사 번호를 모두 적어 주세요."
+    urls = lambda what: [flagged[n - 1]["url"] for n, w in sorted(picked.items()) if PER_ACTION[w] == what]
+    return Decision(action="per_article", exclude=urls("exclude"), replace=urls("replace")), None
+
+def parse_reply_detail(text, flagged):          # 스레드 답글 → (Decision|None, 되물을 말|None)
+    lines = [l.strip() for l in (text or "").strip().splitlines() if l.strip()]
+    if any(PER_LINE.match(l) for l in lines):
+        return _parse_per_article(lines, flagged)
+    return parse_reply(text, flagged), None
+
 def parse_reply(text, flagged):                 # 스레드 답글 → Decision. 알아들을 수 없으면 None (승인으로 치지 않는다)
     text = (text or "").strip()
+    lines = [l.strip() for l in text.splitlines() if l.strip()]
+    if any(PER_LINE.match(l) for l in lines):
+        return _parse_per_article(lines, flagged)[0]
     if text == "승인":
         return Decision(action="approve")
     if m := re.fullmatch(r"빼고([\d,\s]*)", text):
@@ -159,6 +194,12 @@ def reply_text(d: Decision, flagged):           # Decision → 스레드 답글 
         return "빼고 " + ",".join(str(num[u]) for u in d.exclude)
     if d.action == "hold":
         return f"보류: {flat(d.reason)}"
+    if d.action == "per_article":
+        word = lambda u: "보류" if u in d.exclude else ("교체" if u in d.replace else "승인")
+        groups = {}
+        for a in flagged:
+            groups.setdefault(word(a["url"]), []).append(str(num[a["url"]]))
+        return "\n".join(f"{','.join(ns)} - {w}" for w, ns in groups.items())
     return "\n".join(line for u, e in d.edits.items()
                      for line in (f"제목 {num[u]}: {flat(e.headline)}", f"수정 {num[u]}: {flat(e.summary)}"))
 
