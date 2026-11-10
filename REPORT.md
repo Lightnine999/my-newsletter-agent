@@ -50,7 +50,11 @@ flowchart TD
     A2 -->|"보류"| X["⑤ 발행 보류<br/>아무것도 보내지 않음"]
     P --> E([END · 카드 ✅ 처리됨])
     X --> E
+    classDef new fill:#FFF3CD,stroke:#C9A227,color:#000
+    class A,W,D,H,K,A2,T,F,X new
 ```
+
+<sub>노란 칸이 이번 과제에서 추가한 공정(승인 노드 · 멈춤 · 검토 봇 · 담당자 · 확인 실행 · 재개)이에요. 나머지는 1차 브리핑 그대로예요.</sub>
 
 **상태(State) 흐름** — [graph.py](graph.py) `Brief`
 
