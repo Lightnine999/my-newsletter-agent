@@ -1,0 +1,54 @@
+name: 발송 승인 확인
+run-name: 승인 확인
+
+# 07:30 실행이 승인 요청을 올리고 멈춘 호를, 담당자의 디스코드 응답대로 이어서 발행한다 (docs/hitl-plan.md)
+# 서버 없이 30분마다 잠깐 깨어나 반응·답글을 읽는다. 기다리는 호가 없으면 바로 끝난다
+on:
+  schedule:
+    - cron: "0,30 23,0-4 * * *"   # UTC 23:00~04:30 = KST 08:00~13:30, 30분마다 (정오 규칙이 12시 이후 첫 실행에서 돈다)
+  workflow_dispatch:
+
+# 매일 실행과 같은 그룹 — 체크포인트 파일을 동시에 고쳐 커밋하지 않게 하나씩만 돈다
+concurrency:
+  group: daily-briefing
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: 기다리는 호가 있나
+        id: waiting
+        run: |
+          if [ -f store/reviews.jsonl ] && grep -q '"waiting"' store/reviews.jsonl; then echo "yes=1" >> "$GITHUB_OUTPUT"; fi
+      - uses: actions/setup-python@v5
+        if: steps.waiting.outputs.yes
+        with:
+          python-version: "3.12"
+          cache: pip
+      - if: steps.waiting.outputs.yes
+        run: pip install -r requirements.txt
+      - name: 응답 읽고 이어 가기
+        if: steps.waiting.outputs.yes
+        run: python run.py --check
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_REVIEW_CHANNEL_ID: ${{ secrets.DISCORD_REVIEW_CHANNEL_ID }}
+          DISCORD_REVIEWER_ID: ${{ secrets.DISCORD_REVIEWER_ID }}
+          HITL_STATE_KEY: ${{ secrets.HITL_STATE_KEY }}
+      - name: 기록 커밋
+        if: ${{ always() && steps.waiting.outputs.yes }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add store issues
+          if git diff --cached --quiet; then echo "바뀐 기록 없음"; exit 0; fi
+          git commit -m "기록: $(TZ=Asia/Seoul date +%Y-%m-%d) 승인 처리"
+          git push

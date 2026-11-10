@@ -41,6 +41,11 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
           DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+          # HITL — 걸린 기사가 있으면 비공개 #검토 채널에 승인 요청을 올리고 멈춘다 (docs/hitl-plan.md)
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_REVIEW_CHANNEL_ID: ${{ secrets.DISCORD_REVIEW_CHANNEL_ID }}
+          DISCORD_REVIEWER_ID: ${{ secrets.DISCORD_REVIEWER_ID }}
+          HITL_STATE_KEY: ${{ secrets.HITL_STATE_KEY }}
       - name: 실행 기록 커밋
         # 발송이 실패해도, dry-run이어도 metrics는 남긴다 (실패·dry-run 기록도 지표)
         if: ${{ always() }}

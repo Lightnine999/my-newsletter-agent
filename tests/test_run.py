@@ -41,26 +41,26 @@ def test_오늘_보낸_기록이_있으면_already_sent():
 
 def test_예비_실행은_오늘_이미_보냈으면_그래프를_돌리지_않는다(env, monkeypatch):
     sent_today([{"date": TODAY, "url": "v"}])
-    monkeypatch.setattr(graph, "run", lambda: pytest.fail("그래프를 돌리면 안 돼요"))
+    monkeypatch.setattr(graph, "run", lambda **kw: pytest.fail("그래프를 돌리면 안 돼요"))
     assert run.main(["run.py"], {"DRY_RUN": "0"}) == 0
     assert not run.METRICS_PATH.exists()
 
 
 def test_dry_run은_오늘_보냈어도_돌린다(env, monkeypatch):
     sent_today([{"date": TODAY, "url": "v"}])
-    monkeypatch.setattr(graph, "run", lambda: fake_out("dry-run"))
+    monkeypatch.setattr(graph, "run", lambda **kw: fake_out("dry-run"))
     assert run.main(["run.py", "--dry-run"], {}) == 0
 
 
 def test_보내야_하는데_못_보내면_exit_1이고_실패를_기록한다(env, monkeypatch):
-    monkeypatch.setattr(graph, "run", lambda: fake_out("실패"))
+    monkeypatch.setattr(graph, "run", lambda **kw: fake_out("실패"))
     assert run.main(["run.py"], {"DRY_RUN": "0"}) == 1
     row = json.loads(run.METRICS_PATH.read_text(encoding="utf-8"))
     assert row["publish_result"] == "실패"
 
 
 def test_보내면_metrics_한_줄을_쌓는다(env, monkeypatch):
-    monkeypatch.setattr(graph, "run", lambda: fake_out("보냄"))
+    monkeypatch.setattr(graph, "run", lambda **kw: fake_out("보냄"))
     actions_env = {"DRY_RUN": "0", "GITHUB_RUN_ID": "123", "GITHUB_EVENT_NAME": "schedule"}
     assert run.main(["run.py"], actions_env) == 0
     row = json.loads(run.METRICS_PATH.read_text(encoding="utf-8").splitlines()[-1])
@@ -74,14 +74,14 @@ def test_보내면_metrics_한_줄을_쌓는다(env, monkeypatch):
 
 def test_dry_run도_metrics에_dry_run으로_쌓는다(env, monkeypatch):
     # PRD 7부: publish_result는 보냄 / dry-run / 실패 — dry-run도 품질 추적에 쓴다
-    monkeypatch.setattr(graph, "run", lambda: fake_out("dry-run"))
+    monkeypatch.setattr(graph, "run", lambda **kw: fake_out("dry-run"))
     assert run.main(["run.py", "--dry-run"], {}) == 0
     row = json.loads(run.METRICS_PATH.read_text(encoding="utf-8"))
     assert row["publish_result"] == "dry-run" and row["trigger"] == "manual"
 
 
 def test_설정이_틀리면_exit_2(env, monkeypatch):
-    def bad():
+    def bad(**kw):
         raise graph.ConfigError("설정 파일이 없어요")
     monkeypatch.setattr(graph, "run", bad)
     assert run.main(["run.py"], {"DRY_RUN": "0"}) == 2

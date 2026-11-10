@@ -1,7 +1,9 @@
 """모든 테스트에서 실제 OpenAI·네트워크 호출을 막아요. 필요한 테스트만 가짜로 갈아 끼워요."""
 import pytest
+import requests
 
 import graph
+import hitl_store
 
 
 def _blocked(*args, **kwargs):
@@ -18,3 +20,9 @@ def no_network(monkeypatch, tmp_path):
     monkeypatch.setattr(graph, "fetch_feed", _blocked)
     monkeypatch.setattr(graph, "extract_body", _blocked)
     monkeypatch.setattr(graph.requests, "post", _blocked)   # Discord 발송도 막는다
+    for name in ("get", "put", "patch", "delete", "request"):  # 디스코드 봇 호출도 막는다
+        monkeypatch.setattr(requests, name, _blocked)
+    # 승인 대기 체크포인트·기록도 임시 폴더로
+    monkeypatch.setattr(hitl_store, "PLAIN", tmp_path / "store" / "hitl" / "checkpoints.sqlite")
+    monkeypatch.setattr(hitl_store, "SEALED", tmp_path / "store" / "checkpoints.enc")
+    monkeypatch.setattr(hitl_store, "REVIEWS", tmp_path / "store" / "reviews.jsonl")

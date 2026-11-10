@@ -9,3 +9,6 @@ output/
 # 원본 자료는 로컬에만 둔다 (교재 저작권 · docx 내용은 PRD·docs에 옮겨 둠)
 D00_*.html
 sources-master.docx
+
+# HITL 검증 샘플 — 기사 원문이 들어 있어 로컬에만 둔다
+store/hitl/

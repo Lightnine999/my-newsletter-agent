@@ -6,7 +6,8 @@ from typing import Annotated, Literal, TypedDict
 
 import yaml
 from langgraph.graph import StateGraph, START, END
-from langgraph.types import Send
+from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.types import Command, Send, interrupt
 from pydantic import BaseModel, Field, ValidationError, model_validator
 
 class Brief(TypedDict):
@@ -17,6 +18,8 @@ class Brief(TypedDict):
     drafted:   Annotated[list, operator.add]    # ③ 세 칸 요약 — 워커들이 나눠 채운다
     verified:  list                             # ④ 검수를 통과한 것 — 줄이는 결과라 리듀서 없음
     log:       Annotated[list, operator.add]    # 무슨 일이 있었는지
+    date:      str                              # 발행일 = thread_id (승인을 기다리다 날이 바뀌어도 같은 호)
+    held:      str                              # 사람이 보류했으면 그 사유 — publish가 보내지 않는다
 
 # ── 설정 · audience.yaml ──────────────────────────────────────
 AUDIENCE_PATH = Path(__file__).resolve().parent / "audience.yaml"
@@ -164,7 +167,7 @@ def collect(s: dict, cfg: Config, fetch=None, sent_path=SENT_PATH) -> dict:  # �
                     + (f" · 응답 없음 {dead}" if dead else "")]}
 
 # ── 3부 · select ─────────────────────────────────────────────
-from openai import OpenAI
+from openai import LengthFinishReasonError, OpenAI
 
 try:                                            # 키는 .env에서 읽는다 (Actions에서는 Secrets가 환경변수로 들어온다)
     from dotenv import load_dotenv
@@ -191,16 +194,31 @@ import threading
 USAGE = Counter()                               # 실행 한 번의 토큰 수 — run.py가 metrics에 적는다
 _usage_lock = threading.Lock()                  # report·verify가 여러 스레드에서 동시에 부른다
 
-def ask(system, user, schema):                  # 구조화 출력 — 형식이 틀리면 openai가 예외를 던진다
+MAX_OUT = 8192                                  # 정상 답은 40건 배정·순위도 수천 토큰 — 넘으면 같은 항목을 되풀이하는 중이다
+
+def count_usage(u):
+    if u:
+        with _usage_lock:
+            USAGE["prompt"] += u.prompt_tokens
+            USAGE["completion"] += u.completion_tokens
+
+def parse_once(system, user, schema, seed):
     r = llm().chat.completions.parse(
-        model=MODEL, temperature=0, seed=SEED,   # temperature 0이어도 결과가 흔들려서 seed까지 고정 (완전 보장은 아님)
+        model=MODEL, temperature=0, seed=seed,   # temperature 0이어도 결과가 흔들려서 seed까지 고정 (완전 보장은 아님)
+        max_completion_tokens=MAX_OUT,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
         response_format=schema)
-    if r.usage:
-        with _usage_lock:
-            USAGE["prompt"] += r.usage.prompt_tokens
-            USAGE["completion"] += r.usage.completion_tokens
+    count_usage(r.usage)
     return r.choices[0].message.parsed
+
+def ask(system, user, schema):                  # 구조화 출력 — 형식이 틀리면 openai가 예외를 던진다
+    # 실측(2026-11-10): select에서 답이 32,768토큰까지 반복되다 길이 한도로 실행 전체가 죽었다. 같은 입력을 다시 돌리면 통과했다
+    # → 상한을 둬 빨리 끊고, seed를 바꿔 한 번만 다시 묻는다 (같은 seed는 같은 반복에 빠질 수 있다)
+    try:
+        return parse_once(system, user, schema, SEED)
+    except LengthFinishReasonError as e:
+        count_usage(e.completion.usage)          # 버려진 답도 돈은 나갔다
+        return parse_once(system, user, schema, SEED + 1)
 
 PartName = Literal["menswear", "sports", "grooming", "none"]
 
@@ -544,8 +562,10 @@ def record_sent(verified, today):               # 2부 collect가 다음 날 이
                                ensure_ascii=False) + "\n")
 
 def publish(s: dict, cfg: Config, post=None) -> dict:   # ⑤ 발행
+    if s.get("held"):                           # 사람이 보류한 호 — 조용합니다 한 장도 보내지 않는다
+        return {"log": [f"⑤ 발행   보류 · {s['held']}"]}
     post = post or requests.post
-    verified, today = s["verified"], today_kst()
+    verified, today = s["verified"], s.get("date") or today_kst()
     msgs = build_messages(verified, cfg, today)
     dry_run = os.environ.get("DRY_RUN", "1") != "0"     # 기본은 보내지 않는다
     webhook = os.environ.get("DISCORD_WEBHOOK_URL")
@@ -568,23 +588,60 @@ def publish(s: dict, cfg: Config, post=None) -> dict:   # ⑤ 발행
     # sent가 False인 경우가 둘이라 나눠 적는다: 일부러 안 보냄(dry-run) / 보내려다 실패
     return {"log": [f"   사본 issues/{today}.md", f"⑤ 발행   {label} · 보냄"]}
 
+# ── HITL · approve (docs/hitl-plan.md) ───────────────────────
+import hitl
+
+STOP_RULE = "①+②"                               # 원문에 없는 수치 + 건강·의학 키워드
+
+def approve(s: dict, cfg: Config) -> dict:      # ④½ 발송 전 사람 승인
+    review = hitl.build_review(s["verified"], hitl.CRITERIA[STOP_RULE])
+    if not review["flagged"]:
+        return {"log": ["   승인 자동 통과 · 걸린 기사 0건"]}
+    # interrupt 앞에서는 바깥으로 아무것도 보내지 않는다 — 재개하면 이 노드가 처음부터 다시 돌기 때문이다
+    # 디스코드 카드는 run.py가 멈춘 것을 확인한 뒤에 올린다
+    answer = interrupt({**review, "date": s.get("date") or today_kst()})
+    d = hitl.Decision.model_validate(answer)
+    sent = hitl.apply_decision(s["verified"], d)
+    if d.action == "hold":
+        return {"verified": [], "held": d.reason, "log": [f"   승인 응답 · 보류 · 걸린 기사 {len(review['flagged'])}건"]}
+    return {"verified": sent, "log": [f"   승인 응답 · {d.action} · {len(sent)}건 발송"]}
+
 def build(cfg: Config):                         # 노드를 이름으로 붙인다
     g = StateGraph(Brief)
     g.add_node("collect", partial(collect, cfg=cfg))
     g.add_node("select", partial(select, cfg=cfg))
     g.add_node("report", partial(report, cfg=cfg))
     g.add_node("verify", partial(verify, cfg=cfg))
+    g.add_node("approve", partial(approve, cfg=cfg))
     g.add_node("publish", partial(publish, cfg=cfg))
     g.add_edge(START, "collect")
     g.add_edge("collect", "select")
     g.add_conditional_edges("select", fan_report, ["report", "verify"])  # ← 팬아웃, 0건이면 verify로
     g.add_edge("report", "verify")
-    g.add_edge("verify", "publish")
+    g.add_edge("verify", "approve")
+    g.add_edge("approve", "publish")
     g.add_edge("publish", END)
     return g
 
-def run(config_path=AUDIENCE_PATH):            # 실행은 run.py에서만
+def thread(thread_id):
+    return {"configurable": {"thread_id": thread_id}}
+
+def run(config_path=AUDIENCE_PATH, checkpointer=None, thread_id=None):   # 실행은 run.py에서만
     cfg = load_config(config_path)              # 설정이 틀리면 수집 전에 멈춘다
-    init = {"hours": cfg.window_hours,
+    today = today_kst()
+    init = {"hours": cfg.window_hours, "date": today, "held": "",
             "collected": [], "picked": [], "spares": [], "drafted": [], "verified": [], "log": []}
-    return build(cfg).compile().invoke(init)
+    # 걸린 기사가 있으면 approve에서 멈춘다 → 결과에 '__interrupt__'가 담겨 돌아온다
+    app = build(cfg).compile(checkpointer=checkpointer or InMemorySaver())
+    return app.invoke(init, thread(thread_id or today))
+
+def resume(checkpointer, thread_id, decision, config_path=AUDIENCE_PATH):   # 담당자 응답으로 이어 간다
+    app = build(load_config(config_path)).compile(checkpointer=checkpointer)
+    return app.invoke(Command(resume=decision), thread(thread_id))
+
+def pending(checkpointer, thread_id, config_path=AUDIENCE_PATH):   # 승인을 기다리는 호의 화면 내용, 없으면 None
+    app = build(load_config(config_path)).compile(checkpointer=checkpointer)
+    for task in app.get_state(thread(thread_id)).tasks:
+        if task.interrupts:
+            return task.interrupts[0].value
+    return None
